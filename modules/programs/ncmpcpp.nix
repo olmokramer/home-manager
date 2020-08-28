@@ -28,7 +28,26 @@ let
 
   maybeWrapList = xs: if lib.isList xs then xs else [ xs ];
 
-  valueType = with types; oneOf [ bool int str ];
+  settingsType = types.submodule {
+    freeformType = with types; attrsOf (oneOf [ bool int str ]);
+
+    options.mpd_music_dir = mkOption {
+      type = types.nullOr types.path;
+      default = if mpdCfg.enable then mpdCfg.musicDirectory else null;
+      defaultText = lib.literalExample ''
+        if config.services.mpd.enable then
+          config.services.mpd.musicDirectory
+        else
+          null
+      '';
+      description = ''
+        Value of the <code>mpd_music_dir</code> setting. The value of
+        services.mpd.musicDirectory is used as the default if
+        services.mpd.enable is <literal>true</literal>.
+      '';
+      example = "~/music";
+    };
+  };
 
   bindingType = types.submodule ({ name, config, ... }: {
     options = {
@@ -61,25 +80,8 @@ in {
       example = "pkgs.ncmpcpp.override { ... }";
     };
 
-    mpdMusicDir = mkOption {
-      type = types.nullOr types.path;
-      default = if mpdCfg.enable then mpdCfg.musicDirectory else null;
-      defaultText = lib.literalExample ''
-        if config.services.mpd.enable then
-          config.services.mpd.musicDirectory
-        else
-          null
-      '';
-      description = ''
-        Value of the <code>mpd_music_dir</code> setting. The value of
-        services.mpd.musicDirectory is used as the default if
-        services.mpd.enable is <literal>true</literal>.
-      '';
-      example = "~/music";
-    };
-
     settings = mkOption {
-      type = types.attrsOf valueType;
+      type = settingsType;
       default = { };
       description = ''
         Attrset from name of a setting to its value. For available options
@@ -112,18 +114,14 @@ in {
   };
 
   config = mkIf cfg.enable {
-    warnings = mkIf (cfg.settings ? mpd_music_dir && cfg.mpdMusicDir != null) [
-      ("programs.ncmpcpp.settings.mpd_music_dir will be overridden by"
-        + " programs.ncmpcpp.mpdMusicDir.")
-    ];
-
     home.packages = [ cfg.package ];
 
     xdg.configFile = {
       "ncmpcpp/config" = let
-        settings = cfg.settings // lib.optionalAttrs (cfg.mpdMusicDir != null) {
-          mpd_music_dir = toString cfg.mpdMusicDir;
-        };
+        settings = if cfg.settings.mpd_music_dir == null then
+          builtins.removeAttrs cfg.settings [ "mpd_music_dir" ]
+        else
+          cfg.settings;
       in mkIf (lib.length (lib.attrValues settings) > 0) {
         text = renderSettings settings + "\n";
       };

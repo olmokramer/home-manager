@@ -4,9 +4,9 @@
   config = {
     programs.ncmpcpp = {
       enable = true;
-      mpdMusicDir = "/home/user/music";
 
       settings = {
+        mpd_music_dir = "/home/user/music";
         user_interface = "alternative";
         display_volume_level = false;
         playlist_disable_highlight_delay = 0;
