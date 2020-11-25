@@ -113,6 +113,32 @@ let
       (mkDefault (pkgs.writeText "contents" (gitToIni config.contents)));
   });
 
+  hooksPkg = let
+    writeHookScript = hook: script: let
+      scriptPkg =
+        if lib.isDerivation script then
+          script
+        else if lib.isString script then
+          pkgs.writeScriptBin hook script
+        else
+          pkgs.writeScriptBin hook (lib.readFile script);
+
+    in "${scriptPkg}/bin/${hook}";
+
+    hooks = lib.mapAttrsToList writeHookScript cfg.hooks;
+
+  # The scripts must be copied to the hooks directory, not symlinked, because
+  # git copies the hooks directory to the .git directory of a new repository,
+  # and we don't want dangling pointers to the store, which could happen if we
+  # instead symlinked each hook into $out/hooks and an old home-manager
+  # generation gets garbage collected. This is also necessary to be able to
+  # edit the hooks after repository initialization.
+  in pkgs.runCommandLocal "hm-git-hooks" { } ''
+    set -e
+    mkdir -p $out/hooks
+    cp ${lib.concatStringsSep " " hooks} $out/hooks
+  '';
+
 in {
   meta.maintainers = [ maintainers.rycee ];
 
@@ -245,6 +271,20 @@ in {
           '';
         };
       };
+
+      hooks = mkOption {
+        type = with types; attrsOf (oneOf [ package path lines ]);
+        default = { };
+        example = {
+          pre-commit = ''
+            #!/bin/sh
+            make check
+          '';
+        };
+        description = ''
+          Default hooks.
+        '';
+      };
     };
   };
 
@@ -355,6 +395,10 @@ in {
           interactive.diffFilter = "${deltaCommand} --color-only";
           delta = cfg.delta.options;
         };
+    })
+
+    (mkIf (cfg.hooks != { }) {
+      programs.git.iniContent.init.templateDir = toString hooksPkg;
     })
   ]);
 }
